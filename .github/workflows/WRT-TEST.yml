@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
     inputs:
       TARGET:
-        default: 'IPQ60XX-WIFI-NO'
+        default: 'MEDIATEK-WIFI-YES'
         required: true
         type: choice
-        options: [IPQ60XX-WIFI-NO, TEST]
+        options: [MEDIATEK-WIFI-YES, TEST]
       SOURCE:
         default: 'VIKINGYFY/immortalwrt'
         required: true
