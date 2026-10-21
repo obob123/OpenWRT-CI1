@@ -100,26 +100,6 @@ fi
 # 	echo "软件源未修改成功"
 # fi
 
-
-	#修改qca-nss-drv启动顺序
-	# NSS_DRV="$GITHUB_WORKSPACE/openwrt/feeds/nss_packages/qca-nss-drv/files/qca-nss-drv.init"
-	NSS_DRV="$OPENWRT_PATH/package/feeds/nss_packages/qca-nss-drv/files/qca-nss-drv.init"
-	if [ -f "$NSS_DRV" ]; then
-		sed -i 's/START=.*/START=85/g' $NSS_DRV
-		echo "qca-nss-drv has been fixed!"
-	else
-		echo "err"
-	fi
-	#修改qca-nss-pbuf启动顺序
-	NSS_PBUF="$OPENWRT_PATH/package/kernel/mac80211/files/qca-nss-pbuf.init"
-	if [ -f "$NSS_PBUF" ]; then
-		sed -i 's/START=.*/START=86/g' $NSS_PBUF
-		echo "qca-nss-pbuf has been fixed!"
-	else
-		echo "err"
-	fi
-
-
 #移除Shadowsocks组件
 PW_FILE=$(find ./package/ -maxdepth 3 -type f -wholename "*/luci-app-passwall/Makefile")
 if [ -f "$PW_FILE" ]; then
