@@ -44,15 +44,6 @@ else
 	echo "没找到 aurora 配置目录"
 fi
 
-# 修改 dockerman 菜单位置
-DOCKERMAN_JSON=$(find ./package ./feeds -type f -name "luci-app-dockerman.json" | head -n 1)
-if [ -n "$DOCKERMAN_JSON" ]; then
-	sed -i 's#admin/services/dockerman#admin/dockerman#g' "$DOCKERMAN_JSON"
-	echo "dockerman menu moved to top menu!"
-else
-	echo "dockerman not found!"
-fi
-
 # 修改 mini-diskmanager 菜单位置
 MINI_DISK_JSON=$(find ./package ./feeds -type f -name "luci-app-mini-diskmanager.json" | head -n 1)
 
