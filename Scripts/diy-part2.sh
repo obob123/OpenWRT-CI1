@@ -118,7 +118,7 @@ fi
 	else
 		echo "err"
 	fi
-fi
+
 
 #移除Shadowsocks组件
 PW_FILE=$(find ./package/ -maxdepth 3 -type f -wholename "*/luci-app-passwall/Makefile")
