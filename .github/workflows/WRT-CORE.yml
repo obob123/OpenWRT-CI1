@@ -1,273 +1,261 @@
-#云编译公用核心
 name: WRT-CORE
-
 on:
   workflow_call:
     inputs:
-      WRT_TARGET:
+      OPENWRT_NAME:
         required: true
         type: string
-      WRT_THEME:
+      FEEDS_CONF:
         required: true
         type: string
-      WRT_NAME:
+      UPLOAD_TAG_NAME:
         required: true
         type: string
-      WRT_IP:
+      REPO_URL:
         required: true
         type: string
-      WRT_PW:
+      REPO_BRANCH:
         required: true
         type: string
-      WRT_REPO:
+      CONFIG_FILE:
         required: true
         type: string
-      WRT_BRANCH:
+      SET_IP:
         required: true
         type: string
-      WRT_SOURCE:
-        required: false
-        type: string
-      WRT_SUFFIX:
+      NO_WIFI: 
         required: true
         type: string
-      WRT_PACKAGE:
-        required: false
+      NO_DOCKER: 
+        required: true
         type: string
-      WRT_TEST:
-        required: false
+      DIY_P1_SH:
+        required: true
         type: string
-      WRT_COMMIT:
-        required: false
+      DIY_P2_SH:
+        required: true
         type: string
 
 env:
   GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
-  WRT_TARGET: ${{inputs.WRT_TARGET}}
-  WRT_THEME: ${{inputs.WRT_THEME}}
-  WRT_NAME: ${{inputs.WRT_NAME}}
-  WRT_IP: ${{inputs.WRT_IP}}
-  WRT_PW: ${{inputs.WRT_PW}}
-  WRT_REPO: ${{inputs.WRT_REPO}}
-  WRT_BRANCH: ${{inputs.WRT_BRANCH}}
-  WRT_SOURCE: ${{inputs.WRT_SOURCE}}
-  WRT_SUFFIX: ${{inputs.WRT_SUFFIX}}
-  WRT_PACKAGE: ${{inputs.WRT_PACKAGE}}
-  WRT_TEST: ${{inputs.WRT_TEST}}
-  WRT_COMMIT: ${{inputs.WRT_COMMIT}}
+  OPENWRT_NAME: WRT
+  FEEDS_CONF: feeds.conf.default
+  UPLOAD_TAG_NAME: ${{github.event.inputs.CONFIG_DEVICE}}
+  REPO_URL: ${{github.event.inputs.SOURCE_URL}}
+  REPO_BRANCH: ${{github.event.inputs.BRANCH}}
+  CONFIG_FILE: Config/${{github.event.inputs.CONFIG_DEVICE}}.config
+  SET_IP: ${{github.event.inputs.LAN_IP}}
+  NO_WIFI: ${{github.event.inputs.NO_WIRELESS}}
+  NO_DOCKER: ${{github.event.inputs.NO_DOCKERMAN}}
+  DIY_P1_SH: Scripts/diy-part1.sh
+  DIY_P2_SH: Scripts/diy-part2.sh
+  SSH_ACTIONS: false
+  UPLOAD_FIRMWARE: true
+  UPLOAD_RELEASE: true
+  TZ: Asia/Shanghai
 
 jobs:
-  core:
-    name: ${{inputs.WRT_SOURCE}} - (${{inputs.WRT_NAME}})
+  build:
     runs-on: ubuntu-22.04
+
+    permissions:
+      contents: write
+
     steps:
-      - name: Checkout Projects
-        uses: actions/checkout@main
+    - name: 检查服务器性能(Check Server Performance)
+      run: |
+        echo "警告⚠"
+        echo "分配的服务器性能有限,若选择的插件过多,务必注意CPU性能!"
+        echo -e "已知CPU型号(降序):7763/8370C/8272CL/8171M/E5-2673 \n"
+        echo "--------------------------CPU信息--------------------------"
+        echo "CPU物理数量:$(cat /proc/cpuinfo | grep "physical id" | sort | uniq | wc -l)"
+        echo -e "CPU核心信息:$(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c) \n"
+        echo "--------------------------内存信息--------------------------"
+        echo "已安装内存详细信息："
+        echo -e "$(sudo lshw -short -C memory | grep GiB) \n"
+        echo "--------------------------硬盘信息--------------------------"
+        echo "硬盘数量：$(ls /dev/sd* | grep -v [1-9] | wc -l)" && df -hT
 
-      - name: Initialization Values
-        run: |
-          export WRT_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
-          export WRT_CI=$(basename $GITHUB_WORKSPACE)
-          export WRT_VER=$(echo $WRT_REPO | cut -d '/' -f 5-)-$WRT_BRANCH
-          export WRT_TYPE=$(sed -n "1{s/^#//;s/\r$//;p;q}" $GITHUB_WORKSPACE/Config/$WRT_TARGET-$WRT_SUFFIX.txt)
-          echo "WRT_DATE=$WRT_DATE" >> $GITHUB_ENV
-          echo "WRT_CI=$WRT_CI" >> $GITHUB_ENV
-          echo "WRT_VER=$WRT_VER" >> $GITHUB_ENV
-          echo "WRT_TYPE=$WRT_TYPE" >> $GITHUB_ENV
+    - name: 初始化编译环境(Initialization Environment)
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo -E apt -yqq update
+        sudo -E apt -yqq full-upgrade
+        sudo -E apt -yqq autoremove --purge
+        sudo -E apt -yqq autoclean
+        sudo -E apt -yqq clean
+        sudo -E apt -yqq install dos2unix libfuse-dev
+        sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
+        sudo -E systemctl daemon-reload
+        sudo -E timedatectl set-timezone "Asia/Shanghai"
+    
+    - name: 合并磁盘空间(Combine Disks)
+      uses: easimon/maximize-build-space@master
+      with:
+        swap-size-mb: 1024
+        temp-reserve-mb: 100
+        root-reserve-mb: 2048
+        # remove-dotnet: 'true'
+        # remove-android: 'true'
+        # remove-haskell: 'true'
+        # remove-codeql: 'true'
+        # remove-docker-images: 'true'      
 
-      - name: Clone Code
-        run: |
-          git clone --depth=1 --single-branch --branch $WRT_BRANCH $WRT_REPO ./wrt/
+    # - name: 清理磁盘空间(Ubuntu)
+    #   uses: jlumbroso/free-disk-space@main
+    #   with:
+    #     # this might remove tools that are actually needed,
+    #     # when set to "true" but frees about 6 GB
+    #     tool-cache: true
+    #     # all of these default to true, but feel free to set to
+    #     # "false" if necessary for your workflow
+    #     android: false
+    #     dotnet: false
+    #     haskell: false
+    #     large-packages: false
+    #     swap-storage: false
 
-          cd ./wrt/
-          if [ -n "$WRT_COMMIT" ]; then
-            git fetch --depth=1 origin $WRT_COMMIT
-            git checkout $WRT_COMMIT
-          fi
-          echo "WRT_HASH=$(git log -1 --pretty=format:'%h')" >> $GITHUB_ENV
+    - name: 检查项目分支(checkout)
+      uses: actions/checkout@main
 
-      - name: Check Repo Log
-        run: |
-          cd ./wrt/ 
+    - name: 下载固件源码(Clone Source Code)
+      run: |
+        df -hT $GITHUB_WORKSPACE
+        # 获取固件所属的平台
+        export WRT_TARGET=$(grep -m 1 -oP '^CONFIG_TARGET_\K[\w]+(?=\=y)' $CONFIG_FILE | tr '[:lower:]' '[:upper:]')
+        echo "WRT_TARGET=$WRT_TARGET" >> $GITHUB_ENV
+        echo "编译的固件所属平台为：$WRT_TARGET"
+        # clone 源码        
+        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        cd openwrt
+        echo "OPENWRT_PATH=$PWD" >> $GITHUB_ENV
 
-          VERSION_INFO=$(git show -s --date=short --format="作者: %an<br/>时间: %cd<br/>内容: %s<br/>hash: %h")
-          echo "VERSION_INFO=$VERSION_INFO" >> $GITHUB_ENV
-          # VERSION_KERNEL=$(grep -oP 'LINUX_KERNEL_HASH-\K[0-9]+\.[0-9]+\.[0-9]+' include/kernel-6.6)
-          # if [[ $WRT_REPO == *"lede"* ]]; then
-          #   VERSION_KERNEL=$(grep -oP 'LINUX_KERNEL_HASH-\K[0-9]+\.[0-9]+\.[0-9]+' include/kernel-6.1)
-          # fi
-          # echo "VERSION_KERNEL=$VERSION_KERNEL" >> $GITHUB_ENV
-          VERSION_LOG=$(git log --since="76 hours ago" --until="now" --pretty=format:"%h %s" --no-merges -- . ':(exclude)scripts/feeds')
-          if [ -n "$VERSION_LOG" ] && echo "$VERSION_LOG" | grep -q .; then
-            echo "WRT_NEED_COMPILE=true" >> $GITHUB_ENV
-          else
-            echo "WRT_NEED_COMPILE=false" >> $GITHUB_ENV
-            echo "!!!过去76小时内无更新,跳过编译流程!!!"
-          fi
+    - name: 加载feeds.conf.default & DIY_P1_SH(Load Feeds & DIY1)
+      run: |
+        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF $OPENWRT_PATH/feeds.conf.default
+        chmod +x $DIY_P1_SH
+        cd $OPENWRT_PATH
+        $GITHUB_WORKSPACE/$DIY_P1_SH
 
-      - name: Free Disk Space
-        uses: FirelightFlagboy/gh-runner-free-disk-space@main
-        with:
-          android: true
-          dotnet: true
-          haskell: true
-          docker-images: true
-          large-packages: true
-          swap-storage: true
-          tool-cache: true
+    - name: 安装Feeds(Install Feeds)
+      run: |
+        cd $OPENWRT_PATH
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
 
-      - name: Initialization Environment
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: |
-          sudo -E apt -yqq update
-          sudo -E apt -yqq full-upgrade
-          sudo -E apt -yqq autoremove --purge
-          sudo -E apt -yqq autoclean
-          sudo -E apt -yqq clean
-          sudo -E apt -yqq install dos2unix libfuse-dev
-          sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
-          sudo -E systemctl daemon-reload
-          sudo -E timedatectl set-timezone "Asia/Shanghai"
-
-
-      - name: Check Scripts
-        run: |
-          find ./ -maxdepth 3 -type f -iregex ".*\(txt\|sh\)$" -exec dos2unix {} \; -exec chmod +x {} \;
-
-      - name: Check Caches
-        id: check-cache
-        if: ${{ env.WRT_TEST != 'true' && env.WRT_NEED_COMPILE == 'true' }}
-        uses: actions/cache@main
-        with:
-          key: ${{env.WRT_TARGET}}-${{env.WRT_VER}}-${{env.WRT_HASH}}
-          restore-keys: ${{env.WRT_TARGET}}-${{env.WRT_VER}}
-          path: |
-            ./wrt/.ccache
-            ./wrt/staging_dir/host*
-            ./wrt/staging_dir/tool*
-
-      - name: Update Caches
-        if: ${{ env.WRT_TEST != 'true' && env.WRT_NEED_COMPILE == 'true' }}
-        run: |
-          if [ -d "./wrt/staging_dir" ]; then
-            find "./wrt/staging_dir" -type d -name "stamp" -not -path "*target*" | while read -r DIR; do
-              find "$DIR" -type f -exec touch {} +
-            done
-
-            mkdir -p ./wrt/tmp && echo "1" > ./wrt/tmp/.build
-
-            echo "toolchain skiped done!"
-          else
-            echo "caches missed!"
-          fi
-
-          if ${{steps.check-cache.outputs.cache-hit != 'true'}}; then
-            CACHE_LIST=$(gh cache list --key "$WRT_TARGET-$WRT_VER" | cut -f 1)
-            for CACHE_KEY in $CACHE_LIST; do
-               gh cache delete $CACHE_KEY
-            done
-
-            echo "caches cleanup done!"
-          fi
-
-      - name: Update Feeds
-        run: |
-          cd ./wrt/
-          $GITHUB_WORKSPACE/Scripts/Feeds.sh
-
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-
-      - name: Custom Packages
-        run: |
-          cd ./wrt/package/
-
+    - name: 自定义包(Custom Packages)
+      run: |
+          cd $OPENWRT_PATH/package/
+          chmod +x $GITHUB_WORKSPACE/Scripts/Packages.sh
           $GITHUB_WORKSPACE/Scripts/Packages.sh
-          $GITHUB_WORKSPACE/Scripts/Handles.sh
 
-      - name: Custom Settings
-        run: |
-          cd ./wrt/
+    - name: 加载config & DIY_P2_SH(Load Custom Configuration & DIY2)
+      run: |
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE $OPENWRT_PATH/.config
+        chmod +x $DIY_P2_SH
+        cd $OPENWRT_PATH
+        $GITHUB_WORKSPACE/$DIY_P2_SH
 
-          cat $GITHUB_WORKSPACE/Config/GENERAL.txt $GITHUB_WORKSPACE/Config/$WRT_TARGET-$WRT_SUFFIX.txt >> .config
+    # - name: 是否编译DOCKER(DockerMan)
+    #   if: env.NO_DOCKER == 'true'
+    #   run: |
+    #     cd $OPENWRT_PATH
+    #     sed -i '/CONFIG_PACKAGE_luci-app-dockerman=y/d' .config
+    #     echo "固件不含Docker!"
+    - name: 是否编译DOCKER(DockerMan)
+      run: |
+        cd $OPENWRT_PATH
 
-          $GITHUB_WORKSPACE/Scripts/Settings.sh
+        if [[ "$NO_DOCKER" == "true" ]]; then
+          sed -i '/CONFIG_PACKAGE_luci-app-dockerman=y/d' .config
+          echo "固件不含Docker!"
+        else
+          grep -q '^CONFIG_PACKAGE_luci-app-dockerman=y' .config || echo 'CONFIG_PACKAGE_luci-app-dockerman=y' >> .config
+          echo "已启用Docker!"
+        fi
+ 
+    - name: SSH链接管理(SSH Manage)
+      uses: P3TERX/ssh2actions@v1.0.0
+      if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
+      env:
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
-          make defconfig -j$(nproc)
-          ./scripts/diffconfig.sh > seed.config
-          cat seed.config
+    - name: 下载软件包(Download DL Package)
+      id: package
+      run: |
+        cd $OPENWRT_PATH
+        make defconfig
+        make download -j$(nproc)
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
 
-      - name: Download Packages
-        if: ${{ env.WRT_TEST != 'true' && env.WRT_NEED_COMPILE == 'true' }}
-        run: |
-          cd ./wrt/
+    - name: 编译固件(Compile Firmware)
+      id: compile
+      run: |
+        cd $OPENWRT_PATH
+        echo -e "$(nproc) thread compile"
+        make -j$(nproc) || make -j1 || make -j1 V=s
+        sed -nE 's/.*(192.168\.[0-9]+\.[0-9]+).*/\1/p' package/base-files/files/bin/config_generate | head -n 1 > IP_ADDR
+        [ -s IP_ADDR ] && echo "IP_ADDR=$(cat IP_ADDR)" >> $GITHUB_ENV
+        if grep -q 'CONFIG_PACKAGE_luci-app-dockerman=y' .config; then
+                echo "BUILD_DOCKERMAN=-docker" >> $GITHUB_ENV
+        else
+                echo "BUILD_DOCKERMAN=" >> $GITHUB_ENV
+        fi
+        echo "FILE_DATE=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
 
-          make download -j$(nproc)
+    - name: 查看磁盘使用情况(Check Space Usage)
+      if: (!cancelled())
+      run: df -hT
 
-      - name: Compile Firmware
-        if: ${{ env.WRT_TEST != 'true' && env.WRT_NEED_COMPILE == 'true' }}
-        run: |
-          cd ./wrt/
+    - name: 重命名文件(Rename Files)
+      id: organize
+      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      run: | 
+        mapfile -t devices < <(grep '^CONFIG_TARGET_DEVICE.*=y' $OPENWRT_PATH/.config | sed -r 's/.*DEVICE_(.*)=y/\1/')
+        cd $OPENWRT_PATH/bin/targets/*/*
+        rm -rf packages
+        sudo -E apt-get -qq install rename
+                for val in "${devices[@]}"; do
+          rename "s/.*${val}/${{ env.FILE_DATE }}-${{ env.OPENWRT_NAME }}-${val}${{ env.BUILD_DOCKERMAN }}/" *
+          echo "$val"
+        done
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
 
-          make -j$(nproc) || make -j1 V=s
+    - name: 打包上传固件到Artifacts(Upload Firmware To Artifact)
+      uses: actions/upload-artifact@main
+      if: steps.organize.outputs.status == 'success' && !cancelled()
+      with:
+        name: ${{ env.FILE_DATE }}-${{ env.OPENWRT_NAME }}-${{ env.UPLOAD_TAG_NAME }}${{ env.BUILD_DOCKERMAN }}
+        path: ${{ env.FIRMWARE }}
 
-      - name: Machine Information
-        if: ${{ env.WRT_NEED_COMPILE == 'true' }}
-        run: |
-          cd ./wrt/
+    - name: 生成Release标签(Generate the Release tag)
+      id: tag
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      run: |
+        touch release.txt
+        echo "- 使用源码：${{ env.REPO_URL }}" >> release.txt
+        echo "- 登录地址：${{ env.IP_ADDR }}" >> release.txt
+        # echo "- 注意京东云AX1800-Pro亚瑟无线AX1800规格，5G无线不支持160MHz频宽" >> release.txt
+        if [[ "${{ env.BUILD_DOCKERMAN }}" == '-docker' ]]; then
+                echo "- 已编译luci-app-dockerman" >> release.txt
+        else
+                echo "- 未编译luci-app-dockerman" >> release.txt
+        fi
+        echo "release_tag=${{ env.FILE_DATE }}-${{ env.OPENWRT_NAME }}-${{ env.UPLOAD_TAG_NAME }}${{ env.BUILD_DOCKERMAN }}" >> $GITHUB_OUTPUT
+        echo "status=success" >> $GITHUB_OUTPUT
 
-          echo "======================="
-          lscpu | grep -E "name|Core|Thread"
-          echo "======================="
-          df -h
-          echo "======================="
-          du -h --max-depth=1
-          echo "======================="
-
-      - name: Package Firmware
-        if: ${{ env.WRT_NEED_COMPILE == 'true' }}
-        run: |
-          cd ./wrt/ && mkdir ./upload/
-
-          cp -f ./.config ./upload/Config_"$WRT_TARGET"_"$WRT_NAME"_"$WRT_VER"_"$WRT_DATE".txt
-          cp -f ./seed.config ./upload/Config_"$WRT_TARGET"_"$WRT_NAME"_"$WRT_VER"_"$WRT_DATE".seed.txt
-
-          if [[ $WRT_TEST != 'true' ]]; then
-            KVER=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^kernel - \K[\d\.]+' {} \;)
-            find ./bin/targets/ -iregex ".*\(buildinfo\|json\|manifest\|sha256sums\|packages\)$" -exec rm -rf {} +
-            find ./bin/targets/ -iregex ".*\(initramfs-uImage\).*" -exec rm -rf {} +
-
-            for TYPE in $WRT_TYPE ; do
-              for FILE in $(find ./bin/targets/ -type f -iname "*$TYPE*.*") ; do
-                EXT=$(basename $FILE | cut -d '.' -f 2-)
-                NAME=$(basename $FILE | cut -d '.' -f 1 | grep -io "\($TYPE\).*")
-                NEW_FILE="$WRT_NAME"_"$WRT_VER"_"$NAME"_"$WRT_DATE"."$EXT"
-                mv -f $FILE ./upload/$NEW_FILE
-              done
-            done
-
-            find ./bin/targets/ -type f -exec mv -f {} ./upload/ \;
-          fi
-          echo "WRT_KVER=${KVER:-none}" >> $GITHUB_ENV
-
-      - name: Release Firmware
-        if: ${{ env.WRT_NEED_COMPILE == 'true' }}
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: R${{ env.WRT_DATE }}_${{ env.WRT_NAME }}
-          name: R${{ env.WRT_DATE }} for ${{ env.WRT_NAME }}
-          files: ./wrt/upload/*.*
-          body: |
-            **This is ${{ env.WRT_NAME }} OpenWrt Firmware for ${{ env.WRT_TYPE }}**
-            ### 📒 固件信息(无WIFI)
-            - 🖥️ 这是  ${{ env.WRT_TYPE }} 使用的 OpenWrt 固件
-            - 💻 平台: ${{ env.WRT_TARGET }}
-            - ⚽ 源码: ${{ env.WRT_SOURCE }}
-            - 💝 分支: ${{ env.WRT_BRANCH }}
-            - 🌐 地址: **${{ env.WRT_IP }}**
-            - 🔑 密码: **${{ env.WRT_PW }}**
-            ### 🧊 固件版本
-            - 固件内核版本：**${{ env.WRT_KVER }}**
-            - 固件编译前最后一次➦[主源码](${{ env.WRT_REPO }})更新记录
-            - ${{ env.VERSION_INFO }}
+    - name: 发布固件至Release(Upload Firmware To Release)
+      uses: softprops/action-gh-release@v2
+      if: steps.tag.outputs.status == 'success' && !cancelled()
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        files: ${{ env.FIRMWARE }}/*
+        name: ${{ env.FILE_DATE }}-${{ env.OPENWRT_NAME }}-${{ env.UPLOAD_TAG_NAME }}${{ env.BUILD_DOCKERMAN }}
+        tag_name: ${{ steps.tag.outputs.release_tag }}
+        body_path: release.txt 
