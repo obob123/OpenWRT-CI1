@@ -100,25 +100,6 @@ fi
 # 	echo "软件源未修改成功"
 # fi
 
-#高通平台调整
-if [[ $WRT_TARGET == *"QUALCOMMAX"* ]]; then
-	#取消nss相关feed
-	echo "CONFIG_FEED_nss_packages=n" >> ./.config
-	echo "CONFIG_FEED_sqm_scripts_nss=n" >> ./.config
-	#设置NSS版本
-	# echo "CONFIG_NSS_FIRMWARE_VERSION_11_4=n" >> ./.config
-	echo "CONFIG_NSS_FIRMWARE_VERSION_12_5=y" >> ./.config
-	echo "NSS版本设置成功!"
-	#其他调整
-	echo "CONFIG_PACKAGE_kmod-usb-serial-qualcomm=y" >> ./.config
-	#无WIFI配置调整Q6大小
-	if [[ $NO_WIFI == "true" ]]; then
-		# DTS_PATH="./target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/"
-		DTS_PATH="./target/linux/qualcommax/dts/"
-		find $DTS_PATH -type f ! -iname '*nowifi*' -exec sed -i 's/ipq\(6018\|8074\)\.dtsi/ipq\1-nowifi.dtsi/g' {} +
-		# find $DTS_PATH -type f ! -iname '*nowifi*' -exec sed -i 's/ipq\(6018\|8074\).dtsi/ipq\1-nowifi.dtsi/g' {} +
-		echo "无WIFI配置调整Q6成功!"
-	fi
 
 	#修改qca-nss-drv启动顺序
 	# NSS_DRV="$GITHUB_WORKSPACE/openwrt/feeds/nss_packages/qca-nss-drv/files/qca-nss-drv.init"
