@@ -27,7 +27,7 @@ on:
         required: true
         default: 'xiaomi_mi-router-ax3000t-stock'
         options:
-          - xiaomi_mi-router-ax3000t-stock
+          - ax3000t
           - jdcloud_re-ss-01
           - aliyun_ap8220
           - jdcloud_re-cp-03
