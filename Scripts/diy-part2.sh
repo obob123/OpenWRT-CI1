@@ -44,6 +44,15 @@ else
 	echo "没找到 aurora 配置目录"
 fi
 
+# 修改 dockerman 菜单位置
+DOCKERMAN_JSON=$(find ./package ./feeds -type f -name "luci-app-dockerman.json" | head -n 1)
+if [ -n "$DOCKERMAN_JSON" ]; then
+	sed -i 's#admin/services/dockerman#admin/dockerman#g' "$DOCKERMAN_JSON"
+	echo "dockerman menu moved to top menu!"
+else
+	echo "dockerman not found!"
+fi
+
 # 修改 mini-diskmanager 菜单位置
 MINI_DISK_JSON=$(find ./package ./feeds -type f -name "luci-app-mini-diskmanager.json" | head -n 1)
 
@@ -91,4 +100,62 @@ fi
 # 	echo "软件源未修改成功"
 # fi
 
+#高通平台调整
+if [[ $WRT_TARGET == *"QUALCOMMAX"* ]]; then
+	#取消nss相关feed
+	echo "CONFIG_FEED_nss_packages=n" >> ./.config
+	echo "CONFIG_FEED_sqm_scripts_nss=n" >> ./.config
+	#设置NSS版本
+	# echo "CONFIG_NSS_FIRMWARE_VERSION_11_4=n" >> ./.config
+	echo "CONFIG_NSS_FIRMWARE_VERSION_12_5=y" >> ./.config
+	echo "NSS版本设置成功!"
+	#其他调整
+	echo "CONFIG_PACKAGE_kmod-usb-serial-qualcomm=y" >> ./.config
+	#无WIFI配置调整Q6大小
+	if [[ $NO_WIFI == "true" ]]; then
+		# DTS_PATH="./target/linux/qualcommax/files/arch/arm64/boot/dts/qcom/"
+		DTS_PATH="./target/linux/qualcommax/dts/"
+		find $DTS_PATH -type f ! -iname '*nowifi*' -exec sed -i 's/ipq\(6018\|8074\)\.dtsi/ipq\1-nowifi.dtsi/g' {} +
+		# find $DTS_PATH -type f ! -iname '*nowifi*' -exec sed -i 's/ipq\(6018\|8074\).dtsi/ipq\1-nowifi.dtsi/g' {} +
+		echo "无WIFI配置调整Q6成功!"
+	fi
 
+	#修改qca-nss-drv启动顺序
+	# NSS_DRV="$GITHUB_WORKSPACE/openwrt/feeds/nss_packages/qca-nss-drv/files/qca-nss-drv.init"
+	NSS_DRV="$OPENWRT_PATH/package/feeds/nss_packages/qca-nss-drv/files/qca-nss-drv.init"
+	if [ -f "$NSS_DRV" ]; then
+		sed -i 's/START=.*/START=85/g' $NSS_DRV
+		echo "qca-nss-drv has been fixed!"
+	else
+		echo "err"
+	fi
+	#修改qca-nss-pbuf启动顺序
+	NSS_PBUF="$OPENWRT_PATH/package/kernel/mac80211/files/qca-nss-pbuf.init"
+	if [ -f "$NSS_PBUF" ]; then
+		sed -i 's/START=.*/START=86/g' $NSS_PBUF
+		echo "qca-nss-pbuf has been fixed!"
+	else
+		echo "err"
+	fi
+fi
+
+#移除Shadowsocks组件
+PW_FILE=$(find ./package/ -maxdepth 3 -type f -wholename "*/luci-app-passwall/Makefile")
+if [ -f "$PW_FILE" ]; then
+	sed -i '/config PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Libev/,/x86_64/d' $PW_FILE
+	sed -i '/config PACKAGE_$(PKG_NAME)_INCLUDE_ShadowsocksR/,/default n/d' $PW_FILE
+	sed -i '/Shadowsocks_NONE/d; /Shadowsocks_Libev/d; /ShadowsocksR/d' $PW_FILE
+	echo "passwall has been fixed!"
+else
+	echo "没找到passwall目录"
+fi
+
+SP_FILE=$(find ./package/ -maxdepth 3 -type f -wholename "*/luci-app-ssr-plus/Makefile")
+if [ -f "$SP_FILE" ]; then
+	sed -i '/default PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Libev/,/libev/d' $SP_FILE
+	sed -i '/config PACKAGE_$(PKG_NAME)_INCLUDE_ShadowsocksR/,/x86_64/d' $SP_FILE
+	sed -i '/Shadowsocks_NONE/d; /Shadowsocks_Libev/d; /ShadowsocksR/d' $SP_FILE
+	echo "ssr-plus has been fixed!"
+else
+	echo "没找到ssr目录"
+fi
