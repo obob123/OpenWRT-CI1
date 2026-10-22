@@ -25,17 +25,16 @@ on:
         type: choice
         description: '设备'
         required: true
-        default: 'xiaomi_mi-router-ax3000t-stock'
+        default: 'jdcloud_re-cs-07'
         options:
           - ax3000t
           - jdcloud_re-ss-01
           - aliyun_ap8220
           - jdcloud_re-cp-03
-          
       LAN_IP:
         description: '路由器登录地址'
         required: true
-        default: '192.168.8.1'
+        default: '192.168.6.1'
       NO_WIRELESS:
         description: 'Not build WIFI'
         required: true
