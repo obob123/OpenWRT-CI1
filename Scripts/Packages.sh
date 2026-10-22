@@ -1,199 +1,97 @@
 #!/bin/bash
 
+#删除软件包
+DELETE_PACKAGE() {
+	local PKG_NAME=$1
+
+	rm -rf $(find ./ ../feeds/luci/ ../feeds/packages/ -maxdepth 3 -type d -iname "$PKG_NAME" -prune)
+}
+
+
 #安装和更新软件包
 UPDATE_PACKAGE() {
 	local PKG_NAME=$1
 	local PKG_REPO=$2
 	local PKG_BRANCH=$3
 	local PKG_SPECIAL=$4
-	local PKG_LIST=("$PKG_NAME" $5)  # 第5个参数为自定义名称列表
-	local REPO_NAME=${PKG_REPO#*/}
+	local REPO_NAME=$(echo $PKG_REPO | cut -d '/' -f 2)
 
-	echo " "
+	rm -rf $(find ./ ../feeds/luci/ ../feeds/packages/ -maxdepth 3 -type d -iname "*$PKG_NAME*" -prune)
 
-	# 删除本地可能存在的不同名称的软件包
-	for NAME in "${PKG_LIST[@]}"; do
-		# 查找匹配的目录
-		echo "Search directory: $NAME"
-		local FOUND_DIRS
-		FOUND_DIRS=$(find ../feeds/luci/ ../feeds/packages/ -maxdepth 3 -type d -iname "*$NAME*" 2>/dev/null)
+	git clone --depth=1 --single-branch --branch $PKG_BRANCH "https://github.com/$PKG_REPO.git"
 
-		# 删除找到的目录
-		if [ -n "$FOUND_DIRS" ]; then
-			while read -r DIR; do
-				rm -rf "$DIR"
-				echo "Delete directory: $DIR"
-			done <<< "$FOUND_DIRS"
-		else
-			echo "Not found directory: $NAME"
-		fi
-	done
-
-	# 克隆 GitHub 仓库
-	git clone --depth=1 --single-branch --branch "$PKG_BRANCH" "https://github.com/$PKG_REPO.git"
-
-	local PKG_COMMIT
-	PKG_COMMIT=$(git -C "$REPO_NAME" rev-parse --short HEAD 2>/dev/null || echo unknown)
-	if [ -n "$GITHUB_WORKSPACE" ]; then
-		echo "$PKG_NAME $PKG_REPO $PKG_BRANCH $PKG_COMMIT" >> "$GITHUB_WORKSPACE/package-versions.txt"
-	fi
-
-	# 处理克隆的仓库
-	if [[ "$PKG_SPECIAL" == "pkg" ]]; then
-		find "./$REPO_NAME"/*/ -maxdepth 3 -type d -iname "*$PKG_NAME*" -prune -exec cp -rf {} ./ \;
-		rm -rf "./$REPO_NAME/"
-	elif [[ "$PKG_SPECIAL" == "name" ]]; then
-		mv -f "$REPO_NAME" "$PKG_NAME"
-	fi
-}
-
-UPDATE_PACKAGE2() {
-	local -n PKG_NAMES=$1
-	local PKG_REPO=$2
-	local PKG_BRANCH=$3
-	local PKG_SPECIAL=$4
-	local REPO_NAME=${PKG_REPO#*/}
-
-	echo " "
-	echo "=========================================="
-	(IFS=" | "; echo "Processing: ${PKG_NAMES[*]} from $PKG_REPO, repository: $REPO_NAME, branch: $PKG_BRANCH" )
-	echo "=========================================="
-
-	# 删除 feeds 中可能存在的同名软件包
-	for NAME in "${PKG_NAMES[@]}"; do
-	    if [ -z "$NAME" ]; then
-		    continue
-		fi
-		
-		echo "Search directory: $NAME"
-		local FOUND_DIRS=$(find ../feeds/luci/ ../feeds/packages/ -maxdepth 3 -type d -iname "*$NAME*" 2>/dev/null)
-        
-        # 加上 -follow，让 find 把软链接也当作真正的目录去计算层级和搜索
-        #local FOUND_DIRS=$(find ../feeds/luci/ ../feeds/packages/ -maxdepth 3 -follow -type d -iname "*$NAME*" 2>/dev/null)
-        #echo "found dir: $FOUND_DIRS"
-		
-		if [ -n "$FOUND_DIRS" ]; then
-		    while read -r DIR; do
-				rm -rf "$DIR"
-				echo "Delete directory: $DIR"
-			done <<< "$FOUND_DIRS"
-		else
-			echo "Not found directory: $NAME"
-		fi
-	done
-
-	# 克隆 GitHub 仓库
-	git clone --depth=1 --single-branch --branch "$PKG_BRANCH" "https://github.com/$PKG_REPO.git"
-
-	if [ ! -d "$REPO_NAME" ]; then
-	    ls
-		echo "ERROR: Failed to clone $PKG_REPO"
-		return 1
-	fi
-
-	# 处理克隆的仓库
-	if [[ "$PKG_SPECIAL" == "pkg" ]]; then
-	   for NAME in "${PKG_NAMES[@]}"; do
-		    if [[ "$REPO_NAME" == "$NAME" ]]; then
-			   echo "Rename repository folder to ${REPO_NAME}1 as it is same as target pkg folder"
-			   mv ./$REPO_NAME ./${REPO_NAME}1
-			   REPO_NAME=${REPO_NAME}1
-			   break
-			fi
-		done
-		# 从大杂烩仓库中提取特定包
-		for NAME in "${PKG_NAMES[@]}"; do
-	        if [ -z "$NAME" ]; then
-		        continue
-		    fi
-		    find ./$REPO_NAME/*/ -maxdepth 3 -type d -iname "*$NAME*" -prune -exec cp -rf {} ./ \;
-		done
+	if [[ $PKG_SPECIAL == "pkg" ]]; then
+		cp -rf $(find ./$REPO_NAME/*/ -maxdepth 3 -type d -iname "*$PKG_NAME*" -prune) ./
 		rm -rf ./$REPO_NAME/
-	# elif [[ "$PKG_SPECIAL" == "name" ]]; then
-		# 重命名仓库
-	#	mv -f $REPO_NAME $PKG_NAME
+	elif [[ $PKG_SPECIAL == "name" ]]; then
+		mv -f $REPO_NAME $PKG_NAME
 	fi
-	
-    (IFS=" | "; echo "Done: ${PKG_NAMES[*]}")
 }
 
-# 调用示例
-# UPDATE_PACKAGE "OpenAppFilter" "destan19/OpenAppFilter" "master" "" "custom_name1 custom_name2"
-# UPDATE_PACKAGE "open-app-filter" "destan19/OpenAppFilter" "master" "" "luci-app-appfilter oaf" 这样会把原有的open-app-filter，luci-app-appfilter，oaf相关组件删除，不会出现coremark错误。
+#UPDATE_PACKAGE "包名" "项目地址" "项目分支" "pkg/name，可选，pkg为从大杂烩中单独提取包名插件；name为重命名为包名"
+#UPDATE_PACKAGE "argon" "jerrykuku/luci-theme-argon" "master"
+#UPDATE_PACKAGE "kucat" "sirpdboy/luci-theme-kucat" "js"
 
-# UPDATE_PACKAGE "包名" "项目地址" "项目分支" "pkg/name，可选，pkg为从大杂烩中单独提取包名插件；name为重命名为包名"
-#UPDATE_PACKAGE "argon" "sbwml/luci-theme-argon" "openwrt-25.12"
-UPDATE_PACKAGE "aurora" "eamonxg/luci-theme-aurora" "master"
-UPDATE_PACKAGE "aurora-config" "eamonxg/luci-app-aurora-config" "master"
+#UPDATE_PACKAGE "homeproxy" "immortalwrt/homeproxy" "master"
+#UPDATE_PACKAGE "mihomo" "morytyann/OpenWrt-mihomo" "main"
+#UPDATE_PACKAGE "openclash" "vernesong/OpenClash" "dev" "pkg"
+#UPDATE_PACKAGE "passwall" "xiaorouji/openwrt-passwall" "main" "pkg"
+#UPDATE_PACKAGE "ssr-plus" "fw876/helloworld" "master"
 
-UPDATE_PACKAGE "kucat" "sirpdboy/luci-theme-kucat" "master"
-UPDATE_PACKAGE "kucat-config" "sirpdboy/luci-app-kucat-config" "master"
+# if [[ $WRT_REPO == *"lede"* ]]; then
+# 	UPDATE_PACKAGE "alist" "sbwml/luci-app-alist" "main" # 2024年12月3日测试依旧报错
+# fi
 
-# file explorer
-pkgs=("luci-app-quickfile-go"); UPDATE_PACKAGE2 pkgs "ericyin/luci-app-quickfile-go" "main" "pkg"; unset pkgs
-UPDATE_PACKAGE "homeproxy" "immortalwrt/homeproxy" "master"
-#pkgs=("sing-box" "luci-app-homeproxy"); UPDATE_PACKAGE2 pkgs "ericyin/luci-app-homeproxy" "main" "pkg"; unset pkgs
+#UPDATE_PACKAGE "mosdns" "sbwml/luci-app-mosdns" "v5"
+#UPDATE_PACKAGE "vnt" "lazyoop/networking-artifact" "main" "pkg"
+#UPDATE_PACKAGE "easytier" "lazyoop/networking-artifact" "main" "pkg"
 
-#UPDATE_PACKAGE "momo" "nikkinikki-org/OpenWrt-momo" "main"
-#UPDATE_PACKAGE "nikki" "nikkinikki-org/OpenWrt-nikki" "main"
-
-#UPDATE_PACKAGE "mosdns" "sbwml/luci-app-mosdns" "v5" "" "v2dat"
-
+#UPDATE_PACKAGE "luci-app-gecoosac" "lwb1978/openwrt-gecoosac" "main"
 #UPDATE_PACKAGE "luci-app-tailscale" "asvow/luci-app-tailscale" "main"
+UPDATE_PACKAGE "luci-app-advancedplus" "ftkey/openwrt_pkgs" "main" "pkg"
+UPDATE_PACKAGE "luci-app-wolplus" "ftkey/openwrt_pkgs" "main" "pkg"
 
-
-#UPDATE_PACKAGE "diskman" "lisaac/luci-app-diskman" "master"
-#UPDATE_PACKAGE "easytier" "EasyTier/luci-app-easytier" "main"
-#UPDATE_PACKAGE "gecoosac" "laipeng668/luci-app-gecoosac" "main"
-#UPDATE_PACKAGE "netspeedtest" "sirpdboy/netspeedtest" "main" "" "homebox speedtest"
-#UPDATE_PACKAGE "openlist2" "sbwml/luci-app-openlist2" "main"
-#UPDATE_PACKAGE "partexp" "sirpdboy/luci-app-partexp" "main"
-#UPDATE_PACKAGE "qbittorrent" "sbwml/luci-app-qbittorrent" "master" "" "qt6base qt6tools rblibtorrent"
-#UPDATE_PACKAGE "qmodem" "FUjr/QModem" "main"
-#UPDATE_PACKAGE "quickfile" "sbwml/luci-app-quickfile" "main"
-
-
+# if [[ $WRT_REPO != *"immortalwrt"* ]]; then
+# 	UPDATE_PACKAGE "qmi-wwan" "immortalwrt/wwan-packages" "master" "pkg"
+# fi
 
 #更新软件包版本
 UPDATE_VERSION() {
 	local PKG_NAME=$1
-	local PKG_MARK=${2:-false}
+	local PKG_MARK=${2:-not}
 	local PKG_FILES=$(find ./ ../feeds/packages/ -maxdepth 3 -type f -wholename "*/$PKG_NAME/Makefile")
+
+	echo " "
 
 	if [ -z "$PKG_FILES" ]; then
 		echo "$PKG_NAME not found!"
 		return
 	fi
 
-	echo -e "\n$PKG_NAME version update has started!"
+	echo "$PKG_NAME version update has started!"
 
 	for PKG_FILE in $PKG_FILES; do
-		local PKG_REPO=$(grep -Po "PKG_SOURCE_URL:=https://.*github.com/\K[^/]+/[^/]+(?=.*)" $PKG_FILE)
-		local PKG_TAG=$(curl -sL "https://api.github.com/repos/$PKG_REPO/releases" | jq -r "map(select(.prerelease == $PKG_MARK)) | first | .tag_name")
-
+		local PKG_REPO=$(grep -Pho 'PKG_SOURCE_URL:=https://.*github.com/\K[^/]+/[^/]+(?=.*)' $PKG_FILE | head -n 1)
+		local PKG_VER=$(curl -sL "https://api.github.com/repos/$PKG_REPO/releases" | jq -r "map(select(.prerelease|$PKG_MARK)) | first | .tag_name")
+		local NEW_VER=$(echo $PKG_VER | sed "s/.*v//g; s/_/./g")
+		local NEW_HASH=$(curl -sL "https://codeload.github.com/$PKG_REPO/tar.gz/$PKG_VER" | sha256sum | cut -b -64)
 		local OLD_VER=$(grep -Po "PKG_VERSION:=\K.*" "$PKG_FILE")
-		local OLD_URL=$(grep -Po "PKG_SOURCE_URL:=\K.*" "$PKG_FILE")
-		local OLD_FILE=$(grep -Po "PKG_SOURCE:=\K.*" "$PKG_FILE")
-		local OLD_HASH=$(grep -Po "PKG_HASH:=\K.*" "$PKG_FILE")
 
-		local PKG_URL=$([[ "$OLD_URL" == *"releases"* ]] && echo "${OLD_URL%/}/$OLD_FILE" || echo "${OLD_URL%/}")
+		echo "$OLD_VER $PKG_VER $NEW_VER $NEW_HASH"
 
-		local NEW_VER=$(echo $PKG_TAG | sed -E 's/[^0-9]+/\./g; s/^\.|\.$//g')
-		local NEW_URL=$(echo $PKG_URL | sed "s/\$(PKG_VERSION)/$NEW_VER/g; s/\$(PKG_NAME)/$PKG_NAME/g")
-		local NEW_HASH=$(curl -sL "$NEW_URL" | sha256sum | cut -d ' ' -f 1)
-
-		echo "old version: $OLD_VER $OLD_HASH"
-		echo "new version: $NEW_VER $NEW_HASH"
-
-		if [[ "$NEW_VER" =~ ^[0-9].* ]] && dpkg --compare-versions "$OLD_VER" lt "$NEW_VER"; then
+		if [[ $NEW_VER =~ ^[0-9].* ]] && dpkg --compare-versions "$OLD_VER" lt "$NEW_VER"; then
 			sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$NEW_VER/g" "$PKG_FILE"
 			sed -i "s/PKG_HASH:=.*/PKG_HASH:=$NEW_HASH/g" "$PKG_FILE"
-			echo "$PKG_FILE version has been updated!"
+			echo "$PKG_FILE $NEW_VER version has been updated!"
 		else
-			echo "$PKG_FILE version is already the latest!"
+			echo "$PKG_FILE $NEW_VER version is already the latest!"
 		fi
 	done
 }
 
 #UPDATE_VERSION "软件包名" "测试版，true，可选，默认为否"
 #UPDATE_VERSION "sing-box"
+# UPDATE_VERSION "tailscale"
+UPDATE_VERSION "alist"
+#修复Openvpnserver一键生成证书
+UPDATE_VERSION "openvpn-easy-rsa" 
