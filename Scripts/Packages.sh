@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 #安装和更新软件包
 UPDATE_PACKAGE() {
 	local PKG_NAME=$1
@@ -41,32 +40,27 @@ UPDATE_PACKAGE() {
 	fi
 }
 
-#UPDATE_PACKAGE "包名" "项目地址" "项目分支" "pkg/name，可选，pkg为从大杂烩中单独提取包名插件；name为重命名为包名"
-#UPDATE_PACKAGE "argon" "jerrykuku/luci-theme-argon" "master"
-#UPDATE_PACKAGE "kucat" "sirpdboy/luci-theme-kucat" "js"
+# 调用示例
+# UPDATE_PACKAGE "OpenAppFilter" "destan19/OpenAppFilter" "master" "" "custom_name1 custom_name2"
+# UPDATE_PACKAGE "open-app-filter" "destan19/OpenAppFilter" "master" "" "luci-app-appfilter oaf" 这样会把原有的open-app-filter，luci-app-appfilter，oaf相关组件删除，不会出现coremark错误。
 
-#UPDATE_PACKAGE "homeproxy" "immortalwrt/homeproxy" "master"
-#UPDATE_PACKAGE "mihomo" "morytyann/OpenWrt-mihomo" "main"
+# UPDATE_PACKAGE "包名" "项目地址" "项目分支" "pkg/name，可选，pkg为从大杂烩中单独提取包名插件；name为重命名为包名"
+#UPDATE_PACKAGE "argon" "jerrykuku/luci-theme-argon" "master"
+#UPDATE_PACKAGE "argon-config" "jerrykuku/luci-app-argon-config" "master"
+UPDATE_PACKAGE "argon" "sbwml/luci-theme-argon" "openwrt-24.10"
+
+UPDATE_PACKAGE "homeproxy" "VIKINGYFY/homeproxy" "main"
+#UPDATE_PACKAGE "nikki" "nikkinikki-org/OpenWrt-nikki" "main"
 #UPDATE_PACKAGE "openclash" "vernesong/OpenClash" "dev" "pkg"
 #UPDATE_PACKAGE "passwall" "xiaorouji/openwrt-passwall" "main" "pkg"
 #UPDATE_PACKAGE "ssr-plus" "fw876/helloworld" "master"
 
-# if [[ $WRT_REPO == *"lede"* ]]; then
-# 	UPDATE_PACKAGE "alist" "sbwml/luci-app-alist" "main" # 2024年12月3日测试依旧报错
-# fi
+UPDATE_PACKAGE "luci-app-tailscale" "asvow/luci-app-tailscale" "main"
+UPDATE_PACKAGE "viking" "VIKINGYFY/packages" "main" "" "luci-app-wolplus"
 
-#UPDATE_PACKAGE "mosdns" "sbwml/luci-app-mosdns" "v5"
-#UPDATE_PACKAGE "vnt" "lazyoop/networking-artifact" "main" "pkg"
-#UPDATE_PACKAGE "easytier" "lazyoop/networking-artifact" "main" "pkg"
-
-#UPDATE_PACKAGE "luci-app-gecoosac" "lwb1978/openwrt-gecoosac" "main"
-#UPDATE_PACKAGE "luci-app-tailscale" "asvow/luci-app-tailscale" "main"
-UPDATE_PACKAGE "luci-app-advancedplus" "ftkey/openwrt_pkgs" "main" "pkg"
-UPDATE_PACKAGE "luci-app-wolplus" "ftkey/openwrt_pkgs" "main" "pkg"
-
-# if [[ $WRT_REPO != *"immortalwrt"* ]]; then
-# 	UPDATE_PACKAGE "qmi-wwan" "immortalwrt/wwan-packages" "master" "pkg"
-# fi
+if [[ $WRT_REPO != *"immortalwrt"* ]]; then
+	UPDATE_PACKAGE "qmi-wwan" "immortalwrt/wwan-packages" "master" "pkg"
+fi
 
 #更新软件包版本
 UPDATE_VERSION() {
@@ -110,8 +104,5 @@ UPDATE_VERSION() {
 }
 
 #UPDATE_VERSION "软件包名" "测试版，true，可选，默认为否"
-#UPDATE_VERSION "sing-box"
-# UPDATE_VERSION "tailscale"
-UPDATE_VERSION "alist"
-#修复Openvpnserver一键生成证书
-UPDATE_VERSION "openvpn-easy-rsa" 
+UPDATE_VERSION "sing-box"
+UPDATE_VERSION "tailscale"
